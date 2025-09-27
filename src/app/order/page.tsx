@@ -29,7 +29,7 @@ export default function OrderPage() {
         return;
       }
 
-      setProducts(data || []);
+      setProducts(data as any || []);
     } catch (error) {
       console.error('Error fetching products:', error);
       setMessage({ type: 'error', text: 'Failed to load products.' });
