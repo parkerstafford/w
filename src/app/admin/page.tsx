@@ -1,13 +1,15 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart } from 'lucide-react';
-import { supabase } from '../../lib/supabase.js'; // Adjust path based on your structure
+import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart, Phone, User, Calendar, Trash2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase.js';
 
 export default function ProductAddDashboard() {
   const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [formData, setFormData] = useState({
     name: '',
@@ -22,7 +24,7 @@ export default function ProductAddDashboard() {
         .from('products')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(10); // Limit to most recent 10 products
+        .limit(10);
 
       if (error) {
         console.error('Error fetching products:', error);
@@ -36,6 +38,77 @@ export default function ProductAddDashboard() {
       setMessage({ type: 'error', text: 'Failed to load products.' });
     } finally {
       setInitialLoading(false);
+    }
+  };
+
+  // Fetch orders from Supabase
+  const fetchOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('is_completed', false)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error('Error fetching orders:', error);
+        setMessage({ type: 'error', text: 'Failed to load orders.' });
+        return;
+      }
+
+      setOrders(data || []);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      setMessage({ type: 'error', text: 'Failed to load orders.' });
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  // Delete product from Supabase
+  const deleteProduct = async (productId) => {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) {
+        console.error('Error deleting product:', error);
+        setMessage({ type: 'error', text: 'Failed to delete product.' });
+        return;
+      }
+
+      // Remove the product from local state
+      setProducts(prev => prev.filter(product => product.id !== productId));
+      setMessage({ type: 'success', text: 'Product deleted successfully!' });
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      setMessage({ type: 'error', text: 'Failed to delete product.' });
+    }
+  };
+  // Mark order as completed
+  const markOrderCompleted = async (orderId) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ is_completed: true })
+        .eq('id', orderId);
+
+      if (error) {
+        console.error('Error updating order:', error);
+        setMessage({ type: 'error', text: 'Failed to mark order as completed.' });
+        return;
+      }
+
+      // Remove the completed order from local state instead of updating it
+      setOrders(prev => prev.filter(order => order.id !== orderId));
+
+      setMessage({ type: 'success', text: 'Order marked as completed and removed!' });
+    } catch (error) {
+      console.error('Error updating order:', error);
+      setMessage({ type: 'error', text: 'Failed to mark order as completed.' });
     }
   };
 
@@ -59,11 +132,9 @@ export default function ProductAddDashboard() {
         return;
       }
 
-      // Add the new product to the beginning of the list
-      setProducts(prev => [data, ...prev.slice(0, 9)]); // Keep only 10 most recent
+      setProducts(prev => [data, ...prev.slice(0, 9)]);
       setMessage({ type: 'success', text: 'Product added successfully!' });
       
-      // Reset form
       setFormData({
         name: '',
         price: '',
@@ -100,15 +171,15 @@ export default function ProductAddDashboard() {
       ...prev,
       [name]: value
     }));
-    // Clear any existing error messages when user starts typing
     if (message.type === 'error') {
       setMessage({ type: '', text: '' });
     }
   };
 
-  // Load products on component mount
+  // Load data on component mount
   useEffect(() => {
     fetchProducts();
+    fetchOrders();
   }, []);
 
   // Clear success messages after 5 seconds
@@ -121,22 +192,49 @@ export default function ProductAddDashboard() {
     }
   }, [message]);
 
+  // Group orders by customer for better display
+  const groupOrdersByCustomer = (orders) => {
+    const grouped = {};
+    orders.forEach(order => {
+      const key = `${order.customer_name}-${order.phone_number}-${new Date(order.created_at).toDateString()}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          customer_name: order.customer_name,
+          phone_number: order.phone_number,
+          created_at: order.created_at,
+          orders: [],
+          total: 0,
+          allCompleted: true
+        };
+      }
+      grouped[key].orders.push(order);
+      grouped[key].total += parseFloat(order.total_price);
+      if (!order.is_completed) {
+        grouped[key].allCompleted = false;
+      }
+    });
+    return Object.values(grouped);
+  };
+
+  const groupedOrders = groupOrdersByCustomer(orders);
+  const pendingOrders = orders.filter(order => !order.is_completed);
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <div className="border-b border-gray-800 bg-black">
-        <div className="max-w-6xl mx-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center space-x-3">
             <Database className="w-8 h-8 text-white" />
             <div>
               <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-              <p className="text-gray-400 text-sm">Add new products to your inventory</p>
+              <p className="text-gray-400 text-sm">Manage your products and orders</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Success/Error Message */}
         {message.text && (
           <div className={`mb-6 p-4 rounded-lg border ${
@@ -155,7 +253,7 @@ export default function ProductAddDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           {/* Add Product Form */}
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
             <div className="flex items-center space-x-2 mb-6">
@@ -235,8 +333,8 @@ export default function ProductAddDashboard() {
           {/* Recent Products */}
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
             <div className="flex items-center space-x-2 mb-6">
-              <ShoppingCart className="w-5 h-5" />
-              <h2 className="text-xl font-semibold">Recent Products</h2>
+              <Package className="w-5 h-5" />
+              <h2 className="text-xl font-semibold">Products</h2>
               <span className="bg-gray-800 text-xs px-2 py-1 rounded-full">
                 {products.length}
               </span>
@@ -258,10 +356,19 @@ export default function ProductAddDashboard() {
                 products.map((product) => (
                   <div key={product.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-medium text-white">{product.name}</h3>
-                      <span className="text-lg font-bold text-green-400">
-                        ${parseFloat(product.price).toFixed(2)}
-                      </span>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-white">{product.name}</h3>
+                        <span className="text-lg font-bold text-green-400">
+                          ${parseFloat(product.price).toFixed(2)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => deleteProduct(product.id)}
+                        className="text-red-400 hover:text-red-300 transition-colors p-1"
+                        title="Delete product"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   
                     {product.description && (
@@ -272,6 +379,82 @@ export default function ProductAddDashboard() {
                     <p className="text-xs text-gray-500">
                       Added {new Date(product.created_at).toLocaleDateString()}
                     </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Orders Management */}
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+            <div className="flex items-center space-x-2 mb-6">
+              <ShoppingCart className="w-5 h-5" />
+              <h2 className="text-xl font-semibold">Pending Orders</h2>
+              <span className="bg-gray-800 text-xs px-2 py-1 rounded-full">
+                {pendingOrders.length}
+              </span>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {ordersLoading ? (
+                <div className="text-center py-8">
+                  <Loader className="w-12 h-12 mx-auto mb-3 text-gray-600 animate-spin" />
+                  <p className="text-gray-500">Loading orders...</p>
+                </div>
+              ) : groupedOrders.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                  <p>No pending orders</p>
+                  <p className="text-sm text-gray-600 mt-1">Completed orders are automatically removed</p>
+                </div>
+              ) : (
+                groupedOrders.map((group, index) => (
+                  <div key={index} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    {/* Customer Info */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <User className="w-4 h-4 text-gray-400" />
+                        <h3 className="font-medium text-white">{group.customer_name}</h3>
+                      </div>
+                      <span className="text-lg font-bold text-green-400">
+                        ${group.total.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-4 mb-3 text-sm text-gray-400">
+                      <div className="flex items-center space-x-1">
+                        <Phone className="w-3 h-3" />
+                        <span>{group.phone_number}</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Calendar className="w-3 h-3" />
+                        <span>{new Date(group.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Order Items */}
+                    <div className="space-y-2">
+                      {group.orders.map((order) => (
+                        <div key={order.id} className="flex items-center justify-between bg-gray-700 rounded p-2">
+                          <div className="flex-1">
+                            <span className="text-white text-sm">{order.product_name}</span>
+                            <span className="text-gray-400 text-xs ml-2">x{order.quantity}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-green-400 text-sm font-medium">
+                              ${parseFloat(order.total_price).toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => markOrderCompleted(order.id)}
+                              className="bg-green-600 hover:bg-green-700 text-white p-1 rounded transition-colors"
+                              title="Mark as completed"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))
               )}
