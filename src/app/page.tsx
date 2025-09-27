@@ -82,7 +82,7 @@ export default function HomePage() {
               </h1>
               <div className="flex items-center justify-center space-x-2 mb-4">
                 <p className="text-xl md:text-2xl text-gray-300 font-light">
-                  Artisan Baked Goods & Sweet Delights
+                  Sourdough Shack
                 </p>
               </div>
               <div className="flex items-center justify-center space-x-1 text-white">
