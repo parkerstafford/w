@@ -1,10 +1,12 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart, Phone, User, Calendar, Trash2 } from 'lucide-react';
+import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart, Phone, User, Calendar, Trash2, LogOut } from 'lucide-react';
 import { supabase } from '../../lib/supabase.js';
 
-export default function ProductAddDashboard() {
+export default function ProtectedAdminDashboard() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -16,6 +18,43 @@ export default function ProductAddDashboard() {
     price: '',
     description: ''
   });
+
+  // Check authentication on component mount
+  useEffect(() => {
+    checkAuthentication();
+  }, []);
+
+  const checkAuthentication = () => {
+    const isLoggedIn = localStorage.getItem('admin_logged_in') === 'true';
+    const loginTime = localStorage.getItem('admin_login_time');
+    
+    // Check if login is recent (24 hours)
+    if (isLoggedIn && loginTime) {
+      const now = new Date().getTime();
+      const loginTimestamp = parseInt(loginTime);
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      
+      if (now - loginTimestamp < twentyFourHours) {
+        setIsAuthenticated(true);
+        fetchProducts();
+        fetchOrders();
+      } else {
+        // Session expired
+        handleLogout();
+      }
+    } else {
+      // Not logged in, redirect to login
+      window.location.href = '/admin/login';
+    }
+    
+    setCheckingAuth(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('admin_logged_in');
+    localStorage.removeItem('admin_login_time');
+    window.location.href = '/admin/login';
+  };
 
   // Fetch products from Supabase
   const fetchProducts = async () => {
@@ -80,7 +119,6 @@ export default function ProductAddDashboard() {
         return;
       }
 
-      // Remove the product from local state
       setProducts(prev => prev.filter(product => product.id !== productId));
       setMessage({ type: 'success', text: 'Product deleted successfully!' });
     } catch (error) {
@@ -88,6 +126,7 @@ export default function ProductAddDashboard() {
       setMessage({ type: 'error', text: 'Failed to delete product.' });
     }
   };
+
   // Mark order as completed
   const markOrderCompleted = async (orderId) => {
     try {
@@ -102,9 +141,7 @@ export default function ProductAddDashboard() {
         return;
       }
 
-      // Remove the completed order from local state instead of updating it
       setOrders(prev => prev.filter(order => order.id !== orderId));
-
       setMessage({ type: 'success', text: 'Order marked as completed and removed!' });
     } catch (error) {
       console.error('Error updating order:', error);
@@ -176,12 +213,6 @@ export default function ProductAddDashboard() {
     }
   };
 
-  // Load data on component mount
-  useEffect(() => {
-    fetchProducts();
-    fetchOrders();
-  }, []);
-
   // Clear success messages after 5 seconds
   useEffect(() => {
     if (message.text && message.type === 'success') {
@@ -219,17 +250,43 @@ export default function ProductAddDashboard() {
   const groupedOrders = groupOrdersByCustomer(orders);
   const pendingOrders = orders.filter(order => !order.is_completed);
 
+  // Show loading spinner while checking authentication
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 mx-auto mb-4 text-white animate-spin" />
+          <p className="text-gray-400">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated, this component won't render (redirected to login)
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <div className="border-b border-gray-800 bg-black">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center space-x-3">
-            <Database className="w-8 h-8 text-white" />
-            <div>
-              <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-              <p className="text-gray-400 text-sm">Manage your products and orders</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Database className="w-8 h-8 text-white" />
+              <div>
+                <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+                <p className="text-gray-400 text-sm">Manage your products and orders</p>
+              </div>
             </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </div>
@@ -330,7 +387,7 @@ export default function ProductAddDashboard() {
             </div>
           </div>
 
-          {/* Recent Products */}
+          {/* Products */}
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
             <div className="flex items-center space-x-2 mb-6">
               <Package className="w-5 h-5" />
