@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart } from 'lucide-react';
-import { supabase } from '../lib/supabase.js'; // Adjust path based on your structure
+import { supabase } from '../../lib/supabase.js'; // Adjust path based on your structure
 
 export default function ProductAddDashboard() {
   const [products, setProducts] = useState([]);
