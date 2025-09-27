@@ -1,103 +1,284 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import React, { useState, useEffect } from 'react';
+import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart } from 'lucide-react';
+import { supabase } from '../lib/supabase.js'; // Adjust path based on your structure
+
+export default function ProductAddDashboard() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [formData, setFormData] = useState({
+    name: '',
+    price: '',
+    description: ''
+  });
+
+  // Fetch products from Supabase
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10); // Limit to most recent 10 products
+
+      if (error) {
+        console.error('Error fetching products:', error);
+        setMessage({ type: 'error', text: 'Failed to load products.' });
+        return;
+      }
+
+      setProducts(data || []);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      setMessage({ type: 'error', text: 'Failed to load products.' });
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
+  // Add product to Supabase database
+  const addProductToDatabase = async (productData) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert([{
+          name: productData.name,
+          price: parseFloat(productData.price),
+          description: productData.description || null
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase error:', error);
+        setMessage({ type: 'error', text: 'Failed to add product. Please try again.' });
+        return;
+      }
+
+      // Add the new product to the beginning of the list
+      setProducts(prev => [data, ...prev.slice(0, 9)]); // Keep only 10 most recent
+      setMessage({ type: 'success', text: 'Product added successfully!' });
+      
+      // Reset form
+      setFormData({
+        name: '',
+        price: '',
+        description: '',
+      });
+      
+    } catch (error) {
+      console.error('Error adding product:', error);
+      setMessage({ type: 'error', text: 'Failed to add product. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.name || !formData.price) {
+      setMessage({ type: 'error', text: 'Please fill in all required fields.' });
+      return;
+    }
+
+    if (parseFloat(formData.price) <= 0) {
+      setMessage({ type: 'error', text: 'Price must be greater than 0.' });
+      return;
+    }
+    
+    await addProductToDatabase(formData);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    // Clear any existing error messages when user starts typing
+    if (message.type === 'error') {
+      setMessage({ type: '', text: '' });
+    }
+  };
+
+  // Load products on component mount
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  // Clear success messages after 5 seconds
+  useEffect(() => {
+    if (message.text && message.type === 'success') {
+      const timer = setTimeout(() => {
+        setMessage({ type: '', text: '' });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-black text-white">
+      {/* Header */}
+      <div className="border-b border-gray-800 bg-black">
+        <div className="max-w-6xl mx-auto px-6 py-6">
+          <div className="flex items-center space-x-3">
+            <Database className="w-8 h-8 text-white" />
+            <div>
+              <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+              <p className="text-gray-400 text-sm">Add new products to your inventory</p>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Success/Error Message */}
+        {message.text && (
+          <div className={`mb-6 p-4 rounded-lg border ${
+            message.type === 'success' 
+              ? 'bg-green-900/20 border-green-800 text-green-300' 
+              : 'bg-red-900/20 border-red-800 text-red-300'
+          }`}>
+            <div className="flex items-center space-x-2">
+              {message.type === 'success' ? (
+                <Check className="w-5 h-5" />
+              ) : (
+                <AlertCircle className="w-5 h-5" />
+              )}
+              <span>{message.text}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Add Product Form */}
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+            <div className="flex items-center space-x-2 mb-6">
+              <Plus className="w-5 h-5" />
+              <h2 className="text-xl font-semibold">Add New Product</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Product Name <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors"
+                  placeholder="Enter product name"
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Price ($) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  name="price"
+                  step="0.01"
+                  min="0.01"
+                  value={formData.price}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors"
+                  placeholder="0.00"
+                  disabled={loading}
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors resize-none"
+                  placeholder="Enter product description (optional)"
+                  disabled={loading}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading || !formData.name || !formData.price}
+                className="w-full bg-white text-black py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span>Adding Product...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    <span>Add to Database</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Recent Products */}
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+            <div className="flex items-center space-x-2 mb-6">
+              <ShoppingCart className="w-5 h-5" />
+              <h2 className="text-xl font-semibold">Recent Products</h2>
+              <span className="bg-gray-800 text-xs px-2 py-1 rounded-full">
+                {products.length}
+              </span>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {initialLoading ? (
+                <div className="text-center py-8">
+                  <Loader className="w-12 h-12 mx-auto mb-3 text-gray-600 animate-spin" />
+                  <p className="text-gray-500">Loading products...</p>
+                </div>
+              ) : products.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Package className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                  <p>No products yet</p>
+                  <p className="text-sm text-gray-600 mt-1">Add your first product to get started</p>
+                </div>
+              ) : (
+                products.map((product) => (
+                  <div key={product.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-medium text-white">{product.name}</h3>
+                      <span className="text-lg font-bold text-green-400">
+                        ${parseFloat(product.price).toFixed(2)}
+                      </span>
+                    </div>
+                  
+                    {product.description && (
+                      <p className="text-sm text-gray-400 mb-2 line-clamp-2">
+                        {product.description}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      Added {new Date(product.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
