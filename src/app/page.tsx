@@ -44,7 +44,7 @@ export default function HomePage() {
               </div>
               <span className="text-xl font-bold">Dough Si Do</span>
             </div>
-            <nav className="hidden md:flex items-center space-x-6 text-sm">
+            <nav className="flex items-center space-x-6 text-sm">
               <a href="/admin" className="text-gray-300 hover:text-white transition-colors">Admin</a>
               <a href="/order" className="text-gray-300 hover:text-white transition-colors">Order</a>
             </nav>
