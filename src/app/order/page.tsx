@@ -1,19 +1,159 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Check, AlertCircle, Database, Loader, Package, Plus, Minus, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ShoppingCart, Check, AlertCircle, Database, Loader, Package, Plus, Minus, X, CreditCard } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+
+// PayPal configuration - replace with your actual client ID
+const PAYPAL_CLIENT_ID = "AUuXRFQjIKiRfSN5JJnYDpzOmKCzaytXlxfvklKy6qhrF6RXnIBDLh-lGh_lew-Kd7Q17gJVl3HqbWN2";
 
 export default function OrderPage() {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [paypalLoaded, setPaypalLoaded] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [customerInfo, setCustomerInfo] = useState({
     customerName: '',
     phoneNumber: ''
   });
+  const [showPayment, setShowPayment] = useState(false);
+  const paypalRef = useRef();
+
+  // Load PayPal SDK
+  useEffect(() => {
+    const loadPayPalScript = () => {
+      if (window.paypal) {
+        setPaypalLoaded(true);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&enable-funding=venmo&disable-funding=credit,card`;
+      script.async = true;
+      script.onload = () => {
+        setPaypalLoaded(true);
+      };
+      script.onerror = () => {
+        setMessage({ type: 'error', text: 'Failed to load PayPal. Please refresh the page.' });
+      };
+      document.body.appendChild(script);
+    };
+
+    loadPayPalScript();
+  }, []);
+
+  // Initialize PayPal buttons when paypal is loaded and payment is shown
+  useEffect(() => {
+    if (paypalLoaded && showPayment && window.paypal && paypalRef.current) {
+      // Clear any existing buttons
+      paypalRef.current.innerHTML = '';
+      
+      const totalAmount = getTotalPrice().toFixed(2);
+      
+      window.paypal.Buttons({
+        createOrder: (data, actions) => {
+          return actions.order.create({
+            purchase_units: [{
+              amount: {
+                value: totalAmount,
+                currency_code: 'USD'
+              },
+              description: `Order for ${cart.length} item${cart.length !== 1 ? 's' : ''}`,
+              custom_id: `order_${Date.now()}`
+            }]
+          });
+        },
+        onApprove: async (data, actions) => {
+          try {
+            setLoading(true);
+            const details = await actions.order.capture();
+            
+            // Payment successful, now place the order
+            await handleSuccessfulPayment(details, 'paypal');
+            
+          } catch (error) {
+            console.error('PayPal payment capture error:', error);
+            setMessage({ type: 'error', text: 'Payment processing failed. Please try again.' });
+            setLoading(false);
+          }
+        },
+        onError: (err) => {
+          console.error('PayPal error:', err);
+          setMessage({ type: 'error', text: 'Payment failed. Please try again.' });
+          setLoading(false);
+        },
+        onCancel: (data) => {
+          setMessage({ type: 'error', text: 'Payment was cancelled.' });
+          setLoading(false);
+        },
+        style: {
+          layout: 'vertical',
+          color: 'blue',
+          shape: 'rect',
+          height: 40
+        }
+      }).render(paypalRef.current);
+    }
+  }, [paypalLoaded, showPayment, cart]);
+
+  // Handle successful payment and place order
+  const handleSuccessfulPayment = async (paymentDetails, paymentMethod = 'paypal') => {
+    try {
+      // Create order records for each item in cart
+      const orderPromises = cart.map(item => {
+        const unitPrice = parseFloat(item.price);
+        const totalPrice = unitPrice * item.quantity;
+
+        return supabase
+          .from('orders')
+          .insert([{
+            customer_name: customerInfo.customerName,
+            phone_number: customerInfo.phoneNumber,
+            product_name: item.name,
+            product_id: item.id,
+            quantity: item.quantity,
+            unit_price: unitPrice,
+            total_price: totalPrice,
+            is_completed: false,
+            payment_id: paymentDetails.id,
+            payment_status: paymentDetails.status,
+            payment_amount: parseFloat(getTotalPrice().toFixed(2)),
+            payment_method: paymentMethod
+          }]);
+      });
+
+      const results = await Promise.all(orderPromises);
+      
+      // Check for any errors
+      const hasErrors = results.some(result => result.error);
+      if (hasErrors) {
+        console.error('Some orders failed to submit');
+        setMessage({ type: 'error', text: 'Payment successful but order recording failed. Please contact support.' });
+        return;
+      }
+
+      setMessage({ 
+        type: 'success', 
+        text: `Payment successful! Order placed for ${cart.length} item${cart.length > 1 ? 's' : ''}. We will contact you soon.` 
+      });
+      
+      // Reset everything
+      setCart([]);
+      setCustomerInfo({
+        customerName: '',
+        phoneNumber: ''
+      });
+      setShowPayment(false);
+      
+    } catch (error) {
+      console.error('Error placing orders after payment:', error);
+      setMessage({ type: 'error', text: 'Payment successful but order recording failed. Please contact support with payment ID: ' + paymentDetails.id });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Fetch products from Supabase
   const fetchProducts = async () => {
@@ -52,11 +192,15 @@ export default function OrderPage() {
         return [...prev, { ...product, quantity: 1 }];
       }
     });
+    
+    // Hide payment section when cart is modified
+    setShowPayment(false);
   };
 
   // Remove item from cart
   const removeFromCart = (productId) => {
     setCart(prev => prev.filter(item => item.id !== productId));
+    setShowPayment(false);
   };
 
   // Update quantity in cart
@@ -72,6 +216,7 @@ export default function OrderPage() {
           : item
       )
     );
+    setShowPayment(false);
   };
 
   // Calculate total price
@@ -81,69 +226,25 @@ export default function OrderPage() {
     }, 0);
   };
 
-  // Submit orders to Supabase database
-  const submitOrders = async () => {
-    setLoading(true);
-    try {
-      if (!customerInfo.customerName || !customerInfo.phoneNumber) {
-        setMessage({ type: 'error', text: 'Please fill in your contact information.' });
-        setLoading(false);
-        return;
-      }
-
-      if (cart.length === 0) {
-        setMessage({ type: 'error', text: 'Please add items to your cart before placing an order.' });
-        setLoading(false);
-        return;
-      }
-
-      // Create order records for each item in cart
-      const orderPromises = cart.map(item => {
-        const unitPrice = parseFloat(item.price);
-        const totalPrice = unitPrice * item.quantity;
-
-        return supabase
-          .from('orders')
-          .insert([{
-            customer_name: customerInfo.customerName,
-            phone_number: customerInfo.phoneNumber,
-            product_name: item.name,
-            product_id: item.id,
-            quantity: item.quantity,
-            unit_price: unitPrice,
-            total_price: totalPrice,
-            is_completed: false
-          }]);
-      });
-
-      const results = await Promise.all(orderPromises);
-      
-      // Check for any errors
-      const hasErrors = results.some(result => result.error);
-      if (hasErrors) {
-        console.error('Some orders failed to submit');
-        setMessage({ type: 'error', text: 'Some items failed to order. Please try again.' });
-        return;
-      }
-
-      setMessage({ 
-        type: 'success', 
-        text: `Order placed successfully! ${cart.length} item${cart.length > 1 ? 's' : ''} ordered. We will contact you soon.` 
-      });
-      
-      // Reset cart and customer info
-      setCart([]);
-      setCustomerInfo({
-        customerName: '',
-        phoneNumber: ''
-      });
-      
-    } catch (error) {
-      console.error('Error placing orders:', error);
-      setMessage({ type: 'error', text: 'Failed to place order. Please try again.' });
-    } finally {
-      setLoading(false);
+  // Show payment section (validate customer info first)
+  const proceedToPayment = () => {
+    if (!customerInfo.customerName || !customerInfo.phoneNumber) {
+      setMessage({ type: 'error', text: 'Please fill in your contact information.' });
+      return;
     }
+
+    if (cart.length === 0) {
+      setMessage({ type: 'error', text: 'Please add items to your cart before placing an order.' });
+      return;
+    }
+
+    if (!paypalLoaded) {
+      setMessage({ type: 'error', text: 'Payment system is loading. Please wait a moment.' });
+      return;
+    }
+
+    setShowPayment(true);
+    setMessage({ type: '', text: '' });
   };
 
   const handleCustomerInfoChange = (e) => {
@@ -374,24 +475,49 @@ export default function OrderPage() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={submitOrders}
-                disabled={loading || !customerInfo.customerName || !customerInfo.phoneNumber || cart.length === 0}
-                className="w-full bg-white text-black py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    <span>Placing Order...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShoppingCart className="w-4 h-4" />
-                    <span>Place Order ({cart.length} item{cart.length !== 1 ? 's' : ''})</span>
-                  </>
-                )}
-              </button>
+              {!showPayment ? (
+                <button
+                  type="button"
+                  onClick={proceedToPayment}
+                  disabled={loading || !customerInfo.customerName || !customerInfo.phoneNumber || cart.length === 0}
+                  className="w-full bg-white text-black py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Proceed to Payment</span>
+                </button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <h3 className="text-lg font-semibold mb-2">Complete Your Payment</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Total: <span className="text-green-400 font-bold">${getTotalPrice().toFixed(2)}</span>
+                    </p>
+                    <p className="text-gray-500 text-xs mb-4">
+                      Choose your preferred payment method below
+                    </p>
+                  </div>
+                  
+                  {loading && (
+                    <div className="text-center py-4">
+                      <Loader className="w-6 h-6 mx-auto mb-2 text-gray-400 animate-spin" />
+                      <p className="text-sm text-gray-400">Processing payment...</p>
+                    </div>
+                  )}
+                  
+                  <div 
+                    ref={paypalRef}
+                    className={loading ? 'opacity-50 pointer-events-none' : ''}
+                  ></div>
+                  
+                  <button
+                    onClick={() => setShowPayment(false)}
+                    disabled={loading}
+                    className="w-full bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium disabled:opacity-50 text-sm"
+                  >
+                    Back to Cart
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

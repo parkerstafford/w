@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart, Phone, User, Calendar, Trash2, LogOut } from 'lucide-react';
+import { Plus, Package, Check, AlertCircle, Database, Loader, ShoppingCart, Phone, User, Calendar, Trash2, LogOut, Upload, X, Image } from 'lucide-react';
 import { supabase } from '../../lib/supabase.js';
 
 export default function ProtectedAdminDashboard() {
@@ -12,12 +12,15 @@ export default function ProtectedAdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [formData, setFormData] = useState({
     name: '',
     price: '',
-    description: ''
+    description: '',
+    image: null
   });
+  const [imagePreview, setImagePreview] = useState(null);
 
   // Check authentication on component mount
   useEffect(() => {
@@ -54,6 +57,68 @@ export default function ProtectedAdminDashboard() {
     localStorage.removeItem('admin_logged_in');
     localStorage.removeItem('admin_login_time');
     window.location.href = '/admin/login';
+  };
+
+  // Handle image selection
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file size (limit to 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setMessage({ type: 'error', text: 'Image size must be less than 5MB.' });
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        setMessage({ type: 'error', text: 'Please select a valid image file.' });
+        return;
+      }
+
+      setFormData(prev => ({ ...prev, image: file }));
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => setImagePreview(e.target.result);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Remove selected image
+  const removeImage = () => {
+    setFormData(prev => ({ ...prev, image: null }));
+    setImagePreview(null);
+    // Reset file input
+    const fileInput = document.getElementById('image-upload');
+    if (fileInput) fileInput.value = '';
+  };
+
+  // Upload image to Supabase Storage
+  const uploadImage = async (file, productId) => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${productId}.${fileExt}`;
+      const filePath = `products/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
+
+      // Get public URL
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw error;
+    }
   };
 
   // Fetch products from Supabase
@@ -108,6 +173,14 @@ export default function ProtectedAdminDashboard() {
   // Delete product from Supabase
   const deleteProduct = async (productId) => {
     try {
+      // First get the product to check if it has an image
+      const { data: product } = await supabase
+        .from('products')
+        .select('image_url')
+        .eq('id', productId)
+        .single();
+
+      // Delete the product from database
       const { error } = await supabase
         .from('products')
         .delete()
@@ -117,6 +190,20 @@ export default function ProtectedAdminDashboard() {
         console.error('Error deleting product:', error);
         setMessage({ type: 'error', text: 'Failed to delete product.' });
         return;
+      }
+
+      // If product had an image, delete it from storage
+      if (product && product.image_url) {
+        // Extract the file path from the URL or construct it properly
+        const imagePath = product.image_url.split('/').pop(); // Gets the filename
+        const fullPath = `products/${imagePath}`;
+        const { error: deleteError } = await supabase.storage
+          .from('product-images')
+          .remove([fullPath]);
+        
+        if (deleteError) {
+          console.error('Error deleting image from storage:', deleteError);
+        }
       }
 
       setProducts(prev => prev.filter(product => product.id !== productId));
@@ -153,6 +240,7 @@ export default function ProtectedAdminDashboard() {
   const addProductToDatabase = async (productData) => {
     setLoading(true);
     try {
+      // First, insert the product without image
       const { data, error } = await supabase
         .from('products')
         .insert([{
@@ -169,14 +257,53 @@ export default function ProtectedAdminDashboard() {
         return;
       }
 
-      setProducts(prev => [data, ...prev.slice(0, 9)]);
+      let imageUrl = null;
+
+      // If there's an image, upload it
+      if (productData.image) {
+        try {
+          setUploadingImage(true);
+          console.log('Starting image upload for product:', data.id);
+          imageUrl = await uploadImage(productData.image, data.id);
+          console.log('Image uploaded successfully, URL:', imageUrl);
+          
+          // Update the product with the image URL
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({ image_url: imageUrl })
+            .eq('id', data.id);
+
+          if (updateError) {
+            console.error('Error updating product with image:', updateError);
+            setMessage({ type: 'error', text: 'Product added but failed to save image URL.' });
+          } else {
+            console.log('Product updated with image URL successfully');
+          }
+        } catch (imageError) {
+          console.error('Error uploading image:', imageError);
+          setMessage({ type: 'error', text: 'Product added but image upload failed. You can try adding the image later.' });
+        } finally {
+          setUploadingImage(false);
+        }
+      }
+
+      // Add the new product to the list with image URL
+      const newProduct = { ...data, image_url: imageUrl };
+      setProducts(prev => [newProduct, ...prev.slice(0, 9)]);
       setMessage({ type: 'success', text: 'Product added successfully!' });
       
+      // Reset form
       setFormData({
         name: '',
         price: '',
         description: '',
+        image: null
       });
+      setImagePreview(null);
+      
+      // Reset file input
+      const fileInput = document.getElementById('image-upload');
+      if (fileInput) fileInput.value = '';
       
     } catch (error) {
       console.error('Error adding product:', error);
@@ -366,16 +493,55 @@ export default function ProtectedAdminDashboard() {
                 />
               </div>
 
+              {/* Image Upload Section */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Product Image</label>
+                
+                {!imagePreview ? (
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id="image-upload"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      disabled={loading}
+                    />
+                    <div className="bg-gray-800 border border-gray-700 border-dashed rounded-lg p-8 text-center hover:border-gray-600 transition-colors">
+                      <Upload className="w-8 h-8 mx-auto mb-2 text-gray-500" />
+                      <p className="text-gray-400 text-sm">Click to upload an image</p>
+                      <p className="text-gray-500 text-xs mt-1">Max size: 5MB</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Product preview"
+                      className="w-full h-48 object-cover rounded-lg border border-gray-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full transition-colors"
+                      disabled={loading}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || !formData.name || !formData.price}
+                disabled={loading || uploadingImage || !formData.name || !formData.price}
                 className="w-full bg-white text-black py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
-                {loading ? (
+                {loading || uploadingImage ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
-                    <span>Adding Product...</span>
+                    <span>{uploadingImage ? 'Uploading Image...' : 'Adding Product...'}</span>
                   </>
                 ) : (
                   <>
@@ -412,30 +578,50 @@ export default function ProtectedAdminDashboard() {
               ) : (
                 products.map((product) => (
                   <div key={product.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-white">{product.name}</h3>
-                        <span className="text-lg font-bold text-green-400">
-                          ${parseFloat(product.price).toFixed(2)}
-                        </span>
+                    <div className="flex space-x-3">
+                      {/* Product Image */}
+                      <div className="flex-shrink-0">
+                        {product.image_url ? (
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="w-16 h-16 object-cover rounded-lg border border-gray-600"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-gray-700 rounded-lg flex items-center justify-center border border-gray-600">
+                            <Image className="w-6 h-6 text-gray-500" />
+                          </div>
+                        )}
                       </div>
-                      <button
-                        onClick={() => deleteProduct(product.id)}
-                        className="text-red-400 hover:text-red-300 transition-colors p-1"
-                        title="Delete product"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      {/* Product Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <h3 className="font-medium text-white truncate">{product.name}</h3>
+                            <span className="text-lg font-bold text-green-400">
+                              ${parseFloat(product.price).toFixed(2)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => deleteProduct(product.id)}
+                            className="text-red-400 hover:text-red-300 transition-colors p-1 ml-2"
+                            title="Delete product"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {product.description && (
+                          <p className="text-sm text-gray-400 mb-2 line-clamp-2">
+                            {product.description}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          Added {new Date(product.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                  
-                    {product.description && (
-                      <p className="text-sm text-gray-400 mb-2 line-clamp-2">
-                        {product.description}
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-500">
-                      Added {new Date(product.created_at).toLocaleDateString()}
-                    </p>
                   </div>
                 ))
               )}
