@@ -5,7 +5,7 @@ import { ShoppingCart, Check, AlertCircle, Database, Loader, Package, Plus, Minu
 import { supabase } from '../../lib/supabase';
 
 // PayPal configuration - replace with your actual client ID
-const PAYPAL_CLIENT_ID = "AUuXRFQjIKiRfSN5JJnYDpzOmKCzaytXlxfvklKy6qhrF6RXnIBDLh-lGh_lew-Kd7Q17gJVl3HqbWN2";
+const PAYPAL_CLIENT_ID = "AasmG6SWkXwXb7MhRPWLg317rc34aU6X5AVR2y3xtQogXQmu5YpWQpJOheWNtb3504v29A4TKCUp6xwe";
 
 export default function OrderPage() {
   const [products, setProducts] = useState([]);
