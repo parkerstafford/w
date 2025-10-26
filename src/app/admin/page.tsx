@@ -18,9 +18,9 @@ export default function ProtectedAdminDashboard() {
     name: '',
     price: '',
     description: '',
-    image: null
+    images: []
   });
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imagePreviews, setImagePreviews] = useState([]);
 
   // Check authentication on component mount
   useEffect(() => {
@@ -59,66 +59,96 @@ export default function ProtectedAdminDashboard() {
     window.location.href = '/admin/login';
   };
 
-  // Handle image selection
+  // Handle image selection (multiple)
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
+    const files = Array.from(e.target.files);
+    
+    // Check if adding these files would exceed 5 images
+    if (formData.images.length + files.length > 5) {
+      setMessage({ type: 'error', text: 'You can upload a maximum of 5 images per product.' });
+      return;
+    }
+
+    const validFiles = [];
+    const newPreviews = [];
+
+    for (const file of files) {
       // Check file size (limit to 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        setMessage({ type: 'error', text: 'Image size must be less than 5MB.' });
-        return;
+        setMessage({ type: 'error', text: 'Each image must be less than 5MB.' });
+        continue;
       }
 
       // Check file type
       if (!file.type.startsWith('image/')) {
-        setMessage({ type: 'error', text: 'Please select a valid image file.' });
-        return;
+        setMessage({ type: 'error', text: 'Please select valid image files only.' });
+        continue;
       }
 
-      setFormData(prev => ({ ...prev, image: file }));
+      validFiles.push(file);
       
       // Create preview
       const reader = new FileReader();
-      reader.onload = (e) => setImagePreview(e.target.result);
+      reader.onload = (e) => {
+        newPreviews.push(e.target.result);
+        if (newPreviews.length === validFiles.length) {
+          setImagePreviews(prev => [...prev, ...newPreviews]);
+        }
+      };
       reader.readAsDataURL(file);
     }
-  };
 
-  // Remove selected image
-  const removeImage = () => {
-    setFormData(prev => ({ ...prev, image: null }));
-    setImagePreview(null);
+    if (validFiles.length > 0) {
+      setFormData(prev => ({ ...prev, images: [...prev.images, ...validFiles] }));
+    }
+    
     // Reset file input
     const fileInput = document.getElementById('image-upload');
     if (fileInput) fileInput.value = '';
   };
 
-  // Upload image to Supabase Storage
-  const uploadImage = async (file, productId) => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${productId}.${fileExt}`;
-      const filePath = `products/${fileName}`;
+  // Remove selected image by index
+  const removeImage = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
 
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(filePath, file);
+  // Upload multiple images to Supabase Storage
+  const uploadImages = async (files, productId) => {
+    const imageUrls = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${productId}_${i}.${fileExt}`;
+        const filePath = `products/${fileName}`;
 
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw uploadError;
+        }
+
+        // Get public URL
+        const { data } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(filePath);
+
+        imageUrls.push(data.publicUrl);
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        throw error;
       }
-
-      // Get public URL
-      const { data } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(filePath);
-
-      return data.publicUrl;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      throw error;
     }
+    
+    return imageUrls;
   };
 
   // Fetch products from Supabase
@@ -173,10 +203,10 @@ export default function ProtectedAdminDashboard() {
   // Delete product from Supabase
   const deleteProduct = async (productId) => {
     try {
-      // First get the product to check if it has an image
+      // First get the product to check if it has images
       const { data: product } = await supabase
         .from('products')
-        .select('image_url')
+        .select('image_url, image_urls')
         .eq('id', productId)
         .single();
 
@@ -192,17 +222,31 @@ export default function ProtectedAdminDashboard() {
         return;
       }
 
-      // If product had an image, delete it from storage
+      // Delete images from storage
+      const imagesToDelete = [];
+      
+      // Handle old single image format
       if (product && product.image_url) {
-        // Extract the file path from the URL or construct it properly
-        const imagePath = product.image_url.split('/').pop(); // Gets the filename
-        const fullPath = `products/${imagePath}`;
+        const imagePath = product.image_url.split('/').pop();
+        imagesToDelete.push(`products/${imagePath}`);
+      }
+      
+      // Handle new multiple images format
+      if (product && product.image_urls && Array.isArray(product.image_urls)) {
+        product.image_urls.forEach(url => {
+          const imagePath = url.split('/').pop();
+          imagesToDelete.push(`products/${imagePath}`);
+        });
+      }
+      
+      // Delete all images at once
+      if (imagesToDelete.length > 0) {
         const { error: deleteError } = await supabase.storage
           .from('product-images')
-          .remove([fullPath]);
+          .remove(imagesToDelete);
         
         if (deleteError) {
-          console.error('Error deleting image from storage:', deleteError);
+          console.error('Error deleting images from storage:', deleteError);
         }
       }
 
@@ -240,7 +284,7 @@ export default function ProtectedAdminDashboard() {
   const addProductToDatabase = async (productData) => {
     setLoading(true);
     try {
-      // First, insert the product without image
+      // First, insert the product without images
       const { data, error } = await supabase
         .from('products')
         .insert([{
@@ -257,38 +301,38 @@ export default function ProtectedAdminDashboard() {
         return;
       }
 
-      let imageUrl = null;
+      let imageUrls = [];
 
-      // If there's an image, upload it
-      if (productData.image) {
+      // If there are images, upload them
+      if (productData.images && productData.images.length > 0) {
         try {
           setUploadingImage(true);
           console.log('Starting image upload for product:', data.id);
-          imageUrl = await uploadImage(productData.image, data.id);
-          console.log('Image uploaded successfully, URL:', imageUrl);
+          imageUrls = await uploadImages(productData.images, data.id);
+          console.log('Images uploaded successfully, URLs:', imageUrls);
           
-          // Update the product with the image URL
+          // Update the product with the image URLs (stored as JSON array)
           const { error: updateError } = await supabase
             .from('products')
-            .update({ image_url: imageUrl })
+            .update({ image_urls: imageUrls })
             .eq('id', data.id);
 
           if (updateError) {
-            console.error('Error updating product with image:', updateError);
-            setMessage({ type: 'error', text: 'Product added but failed to save image URL.' });
+            console.error('Error updating product with images:', updateError);
+            setMessage({ type: 'error', text: 'Product added but failed to save image URLs.' });
           } else {
-            console.log('Product updated with image URL successfully');
+            console.log('Product updated with image URLs successfully');
           }
         } catch (imageError) {
-          console.error('Error uploading image:', imageError);
-          setMessage({ type: 'error', text: 'Product added but image upload failed. You can try adding the image later.' });
+          console.error('Error uploading images:', imageError);
+          setMessage({ type: 'error', text: 'Product added but image upload failed. You can try adding images later.' });
         } finally {
           setUploadingImage(false);
         }
       }
 
-      // Add the new product to the list with image URL
-      const newProduct = { ...data, image_url: imageUrl };
+      // Add the new product to the list with image URLs
+      const newProduct = { ...data, image_urls: imageUrls };
       setProducts(prev => [newProduct, ...prev.slice(0, 9)]);
       setMessage({ type: 'success', text: 'Product added successfully!' });
       
@@ -297,9 +341,9 @@ export default function ProtectedAdminDashboard() {
         name: '',
         price: '',
         description: '',
-        image: null
+        images: []
       });
-      setImagePreview(null);
+      setImagePreviews([]);
       
       // Reset file input
       const fileInput = document.getElementById('image-upload');
@@ -495,39 +539,59 @@ export default function ProtectedAdminDashboard() {
 
               {/* Image Upload Section */}
               <div>
-                <label className="block text-sm font-medium mb-2">Product Image</label>
+                <label className="block text-sm font-medium mb-2">
+                  Product Images <span className="text-gray-500 text-xs">(Max 5)</span>
+                </label>
                 
-                {!imagePreview ? (
+                {/* Image Previews */}
+                {imagePreviews.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className="relative">
+                        <img
+                          src={preview}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg border border-gray-700"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full transition-colors"
+                          disabled={loading}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                        {index === 0 && (
+                          <div className="absolute bottom-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">
+                            Primary
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload Button */}
+                {imagePreviews.length < 5 && (
                   <div className="relative">
                     <input
                       type="file"
                       id="image-upload"
                       accept="image/*"
+                      multiple
                       onChange={handleImageChange}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       disabled={loading}
                     />
-                    <div className="bg-gray-800 border border-gray-700 border-dashed rounded-lg p-8 text-center hover:border-gray-600 transition-colors">
-                      <Upload className="w-8 h-8 mx-auto mb-2 text-gray-500" />
-                      <p className="text-gray-400 text-sm">Click to upload an image</p>
-                      <p className="text-gray-500 text-xs mt-1">Max size: 5MB</p>
+                    <div className="bg-gray-800 border border-gray-700 border-dashed rounded-lg p-6 text-center hover:border-gray-600 transition-colors">
+                      <Upload className="w-6 h-6 mx-auto mb-2 text-gray-500" />
+                      <p className="text-gray-400 text-sm">
+                        {imagePreviews.length === 0 ? 'Click to upload images' : 'Add more images'}
+                      </p>
+                      <p className="text-gray-500 text-xs mt-1">
+                        {imagePreviews.length}/5 images • Max 5MB each
+                      </p>
                     </div>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <img
-                      src={imagePreview}
-                      alt="Product preview"
-                      className="w-full h-48 object-cover rounded-lg border border-gray-700"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full transition-colors"
-                      disabled={loading}
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
                 )}
               </div>
@@ -541,7 +605,7 @@ export default function ProtectedAdminDashboard() {
                 {loading || uploadingImage ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
-                    <span>{uploadingImage ? 'Uploading Image...' : 'Adding Product...'}</span>
+                    <span>{uploadingImage ? 'Uploading Images...' : 'Adding Product...'}</span>
                   </>
                 ) : (
                   <>
@@ -579,9 +643,22 @@ export default function ProtectedAdminDashboard() {
                 products.map((product) => (
                   <div key={product.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
                     <div className="flex space-x-3">
-                      {/* Product Image */}
+                      {/* Product Image(s) */}
                       <div className="flex-shrink-0">
-                        {product.image_url ? (
+                        {product.image_urls && product.image_urls.length > 0 ? (
+                          <div className="relative">
+                            <img
+                              src={product.image_urls[0]}
+                              alt={product.name}
+                              className="w-16 h-16 object-cover rounded-lg border border-gray-600"
+                            />
+                            {product.image_urls.length > 1 && (
+                              <div className="absolute -bottom-1 -right-1 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-medium">
+                                +{product.image_urls.length - 1}
+                              </div>
+                            )}
+                          </div>
+                        ) : product.image_url ? (
                           <img
                             src={product.image_url}
                             alt={product.name}
