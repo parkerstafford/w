@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Check, AlertCircle, Database, Loader, Package, Plus, Minus, X, CreditCard } from 'lucide-react';
+import { ShoppingCart, Check, AlertCircle, Loader, Package, Plus, Minus, X, CreditCard, Image } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 // PayPal configuration - replace with your actual client ID
@@ -20,6 +20,16 @@ export default function OrderPage() {
   });
   const [showPayment, setShowPayment] = useState(false);
   const paypalRef = useRef();
+
+  // Get product images (handles both old and new format)
+  const getProductImages = (product) => {
+    if (product.image_urls && Array.isArray(product.image_urls) && product.image_urls.length > 0) {
+      return product.image_urls;
+    } else if (product.image_url) {
+      return [product.image_url];
+    }
+    return [];
+  };
 
   // Load PayPal SDK
   useEffect(() => {
@@ -277,43 +287,43 @@ export default function OrderPage() {
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-black">
-        <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="border-b border-gray-800 bg-black sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex items-center space-x-3">
-            <ShoppingCart className="w-8 h-8 text-white" />
+            <ShoppingCart className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
             <div>
-              <h1 className="text-2xl font-bold">Place Your Order</h1>
-              <p className="text-gray-400 text-sm">Select products and complete your purchase</p>
+              <h1 className="text-xl sm:text-2xl font-bold">Place Your Order</h1>
+              <p className="text-gray-400 text-xs sm:text-sm">Select products and complete your purchase</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Success/Error Message */}
         {message.text && (
-          <div className={`mb-6 p-4 rounded-lg border ${
+          <div className={`mb-4 sm:mb-6 p-4 rounded-lg border ${
             message.type === 'success' 
               ? 'bg-green-900/20 border-green-800 text-green-300' 
               : 'bg-red-900/20 border-red-800 text-red-300'
           }`}>
             <div className="flex items-center space-x-2">
               {message.type === 'success' ? (
-                <Check className="w-5 h-5" />
+                <Check className="w-5 h-5 flex-shrink-0" />
               ) : (
-                <AlertCircle className="w-5 h-5" />
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
               )}
-              <span>{message.text}</span>
+              <span className="text-sm">{message.text}</span>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           {/* Products Section */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <div className="flex items-center space-x-2 mb-6">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 sm:p-6">
+            <div className="flex items-center space-x-2 mb-4 sm:mb-6">
               <Package className="w-5 h-5" />
-              <h2 className="text-xl font-semibold">Available Products</h2>
+              <h2 className="text-lg sm:text-xl font-semibold">Available Products</h2>
             </div>
 
             {productsLoading ? (
@@ -328,46 +338,79 @@ export default function OrderPage() {
                 <p className="text-sm text-gray-600 mt-1">Please check back later</p>
               </div>
             ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {products.map((product) => (
-                  <div key={product.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-white mb-1">{product.name}</h3>
-                        {product.description && (
-                          <p className="text-sm text-gray-400 mb-2 line-clamp-2">
-                            {product.description}
-                          </p>
-                        )}
-                        <span className="text-lg font-bold text-green-400">
-                          ${parseFloat(product.price).toFixed(2)}
-                        </span>
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                {products.map((product) => {
+                  const images = getProductImages(product);
+                  return (
+                    <div key={product.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                      <div className="flex flex-col sm:flex-row">
+                        {/* Product Image */}
+                        <div className="w-full sm:w-32 h-32 sm:h-auto bg-gray-900 flex-shrink-0 relative">
+                          {images.length > 0 ? (
+                            <>
+                              <img
+                                src={images[0]}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextElementSibling.style.display = 'flex';
+                                }}
+                              />
+                              <div className="hidden w-full h-full items-center justify-center absolute inset-0">
+                                <Image className="w-12 h-12 text-gray-600" />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Image className="w-12 h-12 text-gray-600" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Product Info */}
+                        <div className="flex-1 p-4">
+                          <div className="flex justify-between items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium text-white mb-1">{product.name}</h3>
+                              {product.description && (
+                                <p className="text-sm text-gray-400 mb-2 line-clamp-2">
+                                  {product.description}
+                                </p>
+                              )}
+                              <span className="text-lg font-bold text-green-400">
+                                ${parseFloat(product.price).toFixed(2)}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => addToCart(product)}
+                              disabled={loading}
+                              className="flex-shrink-0 bg-white text-black px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span className="hidden sm:inline">Add</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => addToCart(product)}
-                        disabled={loading}
-                        className="ml-4 bg-white text-black px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Add</span>
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
           {/* Cart and Order Section */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Customer Information */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-              <div className="flex items-center space-x-2 mb-6">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center space-x-2 mb-4 sm:mb-6">
                 <ShoppingCart className="w-5 h-5" />
-                <h2 className="text-xl font-semibold">Contact Information</h2>
+                <h2 className="text-lg sm:text-xl font-semibold">Contact Information</h2>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">
                     Customer Name <span className="text-red-400">*</span>
@@ -377,7 +420,7 @@ export default function OrderPage() {
                     name="customerName"
                     value={customerInfo.customerName}
                     onChange={handleCustomerInfoChange}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors text-sm sm:text-base"
                     placeholder="Enter your full name"
                     disabled={loading}
                     required
@@ -393,7 +436,7 @@ export default function OrderPage() {
                     name="phoneNumber"
                     value={customerInfo.phoneNumber}
                     onChange={handleCustomerInfoChange}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-white transition-colors text-sm sm:text-base"
                     placeholder="(555) 123-4567"
                     disabled={loading}
                     required
@@ -403,10 +446,10 @@ export default function OrderPage() {
             </div>
 
             {/* Shopping Cart */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-              <div className="flex items-center space-x-2 mb-6">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center space-x-2 mb-4 sm:mb-6">
                 <ShoppingCart className="w-5 h-5" />
-                <h2 className="text-xl font-semibold">Your Order</h2>
+                <h2 className="text-lg sm:text-xl font-semibold">Your Order</h2>
                 <span className="bg-gray-800 text-xs px-2 py-1 rounded-full">
                   {cart.length} item{cart.length !== 1 ? 's' : ''}
                 </span>
@@ -416,58 +459,91 @@ export default function OrderPage() {
                 <div className="text-center py-8 text-gray-500">
                   <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-600" />
                   <p>Your cart is empty</p>
-                  <p className="text-sm text-gray-600 mt-1">Add products from the left to get started</p>
+                  <p className="text-sm text-gray-600 mt-1">Add products to get started</p>
                 </div>
               ) : (
                 <div className="space-y-3 mb-6">
-                  {cart.map((item) => (
-                    <div key={item.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <h3 className="font-medium text-white">{item.name}</h3>
-                          <span className="text-sm text-gray-400">
-                            ${parseFloat(item.price).toFixed(2)} each
-                          </span>
+                  {cart.map((item) => {
+                    const images = getProductImages(item);
+                    return (
+                      <div key={item.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div className="flex">
+                          {/* Cart Item Image */}
+                          <div className="w-20 h-20 bg-gray-900 flex-shrink-0 relative">
+                            {images.length > 0 ? (
+                              <>
+                                <img
+                                  src={images[0]}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    e.target.nextElementSibling.style.display = 'flex';
+                                  }}
+                                />
+                                <div className="hidden w-full h-full items-center justify-center absolute inset-0">
+                                  <Image className="w-8 h-8 text-gray-600" />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Image className="w-8 h-8 text-gray-600" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Cart Item Info */}
+                          <div className="flex-1 p-3">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <h3 className="font-medium text-white text-sm">{item.name}</h3>
+                                <span className="text-xs text-gray-400">
+                                  ${parseFloat(item.price).toFixed(2)} each
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => removeFromCart(item.id)}
+                                disabled={loading}
+                                className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 flex-shrink-0"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                  disabled={loading}
+                                  className="bg-gray-700 text-white p-1 rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="text-white font-medium text-sm min-w-[2rem] text-center">{item.quantity}</span>
+                                <button
+                                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                  disabled={loading}
+                                  className="bg-gray-700 text-white p-1 rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+                              <span className="text-base sm:text-lg font-bold text-green-400">
+                                ${(parseFloat(item.price) * item.quantity).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          disabled={loading}
-                          className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
                       </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                            disabled={loading}
-                            className="bg-gray-700 text-white p-1 rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="text-white font-medium">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            disabled={loading}
-                            className="bg-gray-700 text-white p-1 rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <span className="text-lg font-bold text-green-400">
-                          ${(parseFloat(item.price) * item.quantity).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Total */}
                   <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                     <div className="flex justify-between items-center">
-                      <span className="text-lg font-medium text-white">Total:</span>
-                      <span className="text-2xl font-bold text-green-400">
+                      <span className="text-base sm:text-lg font-medium text-white">Total:</span>
+                      <span className="text-xl sm:text-2xl font-bold text-green-400">
                         ${getTotalPrice().toFixed(2)}
                       </span>
                     </div>

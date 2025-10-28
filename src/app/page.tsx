@@ -47,7 +47,7 @@ export default function HomePage() {
             <nav className="flex items-center space-x-6 text-sm">
               <a href="/admin" className="text-gray-300 hover:text-white transition-colors">Admin</a>
               <a href="/order" className="text-gray-300 hover:text-white transition-colors">Order</a>
-               <a href="/products" className="text-gray-300 hover:text-white transition-colors">Products</a>
+               {/* <a href="/products" className="text-gray-300 hover:text-white transition-colors">Products</a> */}
             </nav>
           </div>
         </div>
