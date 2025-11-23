@@ -86,6 +86,16 @@ export default function HomePage() {
                   Sourdough Shack
                 </p>
               </div>
+              <div className="flex items-center justify-center space-x-2 mb-4">
+                <p className="text-xl md:text-2xl text-gray-300 font-light">
+                  Order by midnight on Mondays for Friday porch pick up at back of driveway
+                </p>
+              </div>
+              <div className="flex items-center justify-center space-x-2 mb-4">
+                <p className="text-xl md:text-2xl text-gray-300 font-light">
+                
+                </p>
+              </div>
               <div className="flex items-center justify-center space-x-1 text-white">
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} className="w-5 h-5 fill-current" />
