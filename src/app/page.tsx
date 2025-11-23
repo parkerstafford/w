@@ -86,6 +86,11 @@ export default function HomePage() {
                   Sourdough Shack
                 </p>
               </div>
+               <div className="flex items-center justify-center space-x-2 mb-4">
+                <p className="text-xl md:text-2xl text-gray-300 font-light">
+                 Order by midnight on Mondays for Friday porch pick up at back of driveway
+                </p>
+              </div>
           
               <div className="flex items-center justify-center space-x-1 text-white">
                 {[...Array(5)].map((_, i) => (
@@ -105,11 +110,6 @@ export default function HomePage() {
                 <span>Order Now</span>
                 <div className="absolute inset-0 rounded-full bg-black opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
               </button>
-              
-              {/* Pickup Information */}
-              <div className="mt-6 text-gray-300 text-lg">
-                <p>Order by midnight on Mondays for Friday porch pick up at back of driveway</p>
-              </div>
             </div>
           </div>
         </div>
