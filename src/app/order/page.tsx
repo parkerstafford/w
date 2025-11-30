@@ -170,8 +170,7 @@ export default function OrderPage() {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('*')
-        .order('name', { ascending: true });
+        .select('*');
 
       if (error) {
         console.error('Error fetching products:', error);
@@ -179,7 +178,35 @@ export default function OrderPage() {
         return;
       }
 
-      setProducts(data as any || []);
+      // Custom sort: cookies first, then brownies, then everything else alphabetically
+      const sortedData = (data || []).sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        
+        const aIsCookie = aName.includes('cookie');
+        const bIsCookie = bName.includes('cookie');
+        const aIsBrownie = aName.includes('brownie');
+        const bIsBrownie = bName.includes('brownie');
+        
+        // Cookies come first
+        if (aIsCookie && !bIsCookie) return -1;
+        if (!aIsCookie && bIsCookie) return 1;
+        
+        // If both are cookies, sort alphabetically
+        if (aIsCookie && bIsCookie) return aName.localeCompare(bName);
+        
+        // Brownies come after cookies
+        if (aIsBrownie && !bIsBrownie && !bIsCookie) return -1;
+        if (!aIsBrownie && bIsBrownie && !aIsCookie) return 1;
+        
+        // If both are brownies, sort alphabetically
+        if (aIsBrownie && bIsBrownie) return aName.localeCompare(bName);
+        
+        // Everything else sorts alphabetically
+        return aName.localeCompare(bName);
+      });
+
+      setProducts(sortedData as any);
     } catch (error) {
       console.error('Error fetching products:', error);
       setMessage({ type: 'error', text: 'Failed to load products.' });
