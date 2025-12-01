@@ -5,9 +5,21 @@ import { ShoppingCart, Star, ChefHat, Sparkles } from 'lucide-react';
 
 export default function HomePage() {
   const [isVisible, setIsVisible] = useState(false);
+  const [snowflakes, setSnowflakes] = useState([]);
 
   useEffect(() => {
     setIsVisible(true);
+    
+    // Generate snowflakes
+    const flakes = Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      animationDuration: 10 + Math.random() * 20,
+      animationDelay: Math.random() * 10,
+      size: 2 + Math.random() * 4,
+      opacity: 0.3 + Math.random() * 0.4
+    }));
+    setSnowflakes(flakes);
   }, []);
 
   const handleOrderNow = () => {
@@ -17,6 +29,40 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
+      {/* Snowflakes */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+        {snowflakes.map((flake) => (
+          <div
+            key={flake.id}
+            className="absolute animate-fall"
+            style={{
+              left: `${flake.left}%`,
+              top: '-10px',
+              width: `${flake.size}px`,
+              height: `${flake.size}px`,
+              backgroundColor: 'white',
+              borderRadius: '50%',
+              opacity: flake.opacity,
+              animationDuration: `${flake.animationDuration}s`,
+              animationDelay: `${flake.animationDelay}s`,
+              filter: 'blur(0.5px)',
+              boxShadow: '0 0 2px rgba(255, 255, 255, 0.5)'
+            }}
+          />
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes fall {
+          to {
+            transform: translateY(100vh) translateX(50px);
+          }
+        }
+        .animate-fall {
+          animation: fall linear infinite;
+        }
+      `}</style>
+
       {/* Animated background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-gray-600/20 to-gray-800/20 rounded-full blur-3xl animate-pulse"></div>
