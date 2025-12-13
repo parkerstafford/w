@@ -347,22 +347,22 @@ export default function OrderPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           {/* Products Section */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 sm:p-6">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
             <div className="flex items-center space-x-2 mb-4 sm:mb-6">
-              <Package className="w-5 h-5" />
-              <h2 className="text-lg sm:text-xl font-semibold">Available Products</h2>
+              <Package className="w-5 h-5 text-black" />
+              <h2 className="text-lg sm:text-xl font-semibold text-black">Available Products</h2>
             </div>
 
             {productsLoading ? (
               <div className="text-center py-8">
-                <Loader className="w-12 h-12 mx-auto mb-3 text-gray-600 animate-spin" />
-                <p className="text-gray-500">Loading products...</p>
+                <Loader className="w-12 h-12 mx-auto mb-3 text-gray-400 animate-spin" />
+                <p className="text-gray-600">Loading products...</p>
               </div>
             ) : products.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Package className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+              <div className="text-center py-8 text-gray-600">
+                <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
                 <p>No products available</p>
-                <p className="text-sm text-gray-600 mt-1">Please check back later</p>
+                <p className="text-sm text-gray-500 mt-1">Please check back later</p>
               </div>
             ) : (
               <div className="space-y-3 max-h-[600px] overflow-y-auto">
